@@ -58,7 +58,7 @@ public class EarlyWindow {
 
         backend.applyWindowHints();
 
-        String vanillaWindowTitle = "Minecraft* ";
+        String vanillaWindowTitle = "Minecraft* Forge ";
         if (mcVersion != null) vanillaWindowTitle += mcVersion;
 
         glfwWindowHintString(GLFW_X11_CLASS_NAME, vanillaWindowTitle);

@@ -18,7 +18,7 @@ public class RenderElement {
     static final int INDEX_TEXTURE_OFFSET = 5;
     private VertexDataBuilder bb;
     private final Renderer renderer;
-    static int globalAlpha = 255;
+    public static int globalAlpha = 255;
     private int retireCount;
 
     @FunctionalInterface

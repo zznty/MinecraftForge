@@ -67,7 +67,7 @@ public class SimpleBufferBuilder extends VertexDataBuilder {
         final int oldQuads = elementBufferVertexLength / 4;
         for (int i = oldQuads; i < quads; i++) {
             mappedBuffer.putInt(i * 4 + 0).putInt(i * 4 + 1).putInt(i * 4 + 2);
-            mappedBuffer.putInt(i * 4 + 1).putInt(i * 4 + 3).putInt(i * 4 + 2);
+            mappedBuffer.putInt(i * 4 + 2).putInt(i * 4 + 3).putInt(i * 4 + 0);
         }
 
         glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);

@@ -78,6 +78,9 @@ public class DisplayWindow implements ImmediateWindowProvider {
     private int winHeight;
     private boolean maximized;
 
+    private String mcVersion;
+    private String forgeVersion;
+
     private final Semaphore renderLock = new Semaphore(1);
     private Runnable repaintTick = ()->{};
 
@@ -194,6 +197,8 @@ public class DisplayWindow implements ImmediateWindowProvider {
     }
 
     private void initRender(final @Nullable String mcVersion, final String forgeVersion) {
+        this.mcVersion = mcVersion;
+        this.forgeVersion = forgeVersion;
         try {
             backend.initialize(earlyWindow.handle(), colourScheme, fbScale, performanceInfo, mcVersion);
         } catch (RuntimeException e) {
@@ -203,16 +208,31 @@ public class DisplayWindow implements ImmediateWindowProvider {
 
         try {
             this.font = new FontRasterizer("Monocraft.ttf", 200000);
-            backend.uploadFontTexture(font.alphaBitmap(), font.bitmapWidth(), font.bitmapHeight(), 1 + RenderElement.INDEX_TEXTURE_OFFSET);
-            font.setTextureSlot(1 + RenderElement.INDEX_TEXTURE_OFFSET);
         } catch (Throwable t) {
             LOGGER.error("Crash during font initialization", t);
             crashElegantly("An error occurred initializing a font for rendering. "+t.getMessage());
         }
 
-        this.context = backend.context();
+        initBackendResources(backend);
+
+        backend.releaseCurrent();
+        this.windowTick = renderScheduler.scheduleAtFixedRate(this::renderFrame, 50, 50, TimeUnit.MILLISECONDS);
+        this.performanceTick = renderScheduler.scheduleAtFixedRate(performanceInfo::update, 0, 500, TimeUnit.MILLISECONDS);
+        renderScheduler.scheduleAtFixedRate(()-> animationTimerTrigger.set(true), 1, 50, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Uploads the font texture and (re)builds the render element list against the given backend,
+     * uploading any element textures onto it. Used both during initial setup and when swapping
+     * backends after handoff (see {@link #setBackend(BaseRenderBackend)}).
+     */
+    private void initBackendResources(BaseRenderBackend target) {
+        target.uploadFontTexture(font.alphaBitmap(), font.bitmapWidth(), font.bitmapHeight(), 1 + RenderElement.INDEX_TEXTURE_OFFSET);
+        font.setTextureSlot(1 + RenderElement.INDEX_TEXTURE_OFFSET);
+
+        this.context = target.context();
         this.elements = new ArrayList<>(List.of(
-            RenderElement.anvil(font, backend),
+            RenderElement.anvil(font, target),
             RenderElement.logMessageOverlay(font),
             RenderElement.forgeVersionOverlay(font, mcVersion + "-" + forgeVersion),
             RenderElement.performanceBar(font),
@@ -221,12 +241,13 @@ public class DisplayWindow implements ImmediateWindowProvider {
 
         var date = Calendar.getInstance();
         if (FMLConfig.getBoolConfigValue(FMLConfig.ConfigValue.EARLY_WINDOW_SQUIR) || (date.get(Calendar.MONTH) == Calendar.APRIL && date.get(Calendar.DAY_OF_MONTH) == 1))
-            this.elements.addFirst(RenderElement.squir(backend));
+            this.elements.addFirst(RenderElement.squir(target));
+    }
 
-        backend.releaseCurrent();
-        this.windowTick = renderScheduler.scheduleAtFixedRate(this::renderFrame, 50, 50, TimeUnit.MILLISECONDS);
-        this.performanceTick = renderScheduler.scheduleAtFixedRate(performanceInfo::update, 0, 500, TimeUnit.MILLISECONDS);
-        renderScheduler.scheduleAtFixedRate(()-> animationTimerTrigger.set(true), 1, 50, TimeUnit.MILLISECONDS);
+    public void setBackend(BaseRenderBackend newBackend) {
+        newBackend.initialize(earlyWindow.handle(), colourScheme, fbScale, performanceInfo, mcVersion);
+        this.backend = newBackend;
+        initBackendResources(newBackend);
     }
 
     private static final String ERROR_URL = "https://links.minecraftforge.net/early-display-errors";

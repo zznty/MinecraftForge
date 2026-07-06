@@ -580,8 +580,9 @@ public class VulkanRenderBackend extends BaseRenderBackend {
             IntBuffer indices = MemoryUtil.memIntBuffer(mapped, MAX_QUADS * 6);
             for (int i = 0; i < MAX_QUADS; i++) {
                 int base = i * 4;
+                // Matches Blaze3D's sequential quad index buffer: 0, 1, 2, 2, 3, 0
                 indices.put(base); indices.put(base + 1); indices.put(base + 2);
-                indices.put(base + 1); indices.put(base + 3); indices.put(base + 2);
+                indices.put(base + 2); indices.put(base + 3); indices.put(base);
             }
             vkUnmapMemory(device, indexBufferMemory);
         }

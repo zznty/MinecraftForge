@@ -5,22 +5,18 @@
 
 package net.minecraftforge.client.loading;
 
-import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vulkan.VulkanGpuTexture;
+import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.LoadingOverlay;
-import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.server.packs.resources.ReloadInstance;
-import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
-import net.minecraftforge.client.ForgeRenderTypes;
+import net.minecraftforge.client.loading.earlydisplay.Blaze3DRenderBackend;
 import net.minecraftforge.fml.StartupMessageManager;
 import net.minecraftforge.fml.earlydisplay.DisplayWindow;
 import net.minecraftforge.fml.loading.progress.ProgressMeter;
-import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL30C;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,77 +24,80 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * This is an implementation of the LoadingOverlay that calls back into the early window rendering, as part of the
- * game loading cycle. We completely replace the {@link #render(GuiGraphics, int, int, float)} call from the parent
- * with one of our own, that allows us to blend our early loading screen into the main window, in the same manner as
- * the Mojang screen. It also allows us to see and tick appropriately as the later stages of the loading system run.
- *
- * It is somewhat a copy of the superclass render method.
- */
 @SuppressWarnings("unused")
 public class ForgeLoadingOverlay extends LoadingOverlay {
-    private static final boolean ENABLE = false; //Boolean.parseBoolean("forge.enableForgeLoadingOverlay");
+    private static final boolean ENABLE = true;
     private static final Logger LOGGER = LoggerFactory.getLogger(ForgeLoadingOverlay.class);
+
     private final Minecraft minecraft;
     private final ReloadInstance reload;
     private final DisplayWindow displayWindow;
     private final ProgressMeter progress;
-    private final RenderType earlyBuffer;
+    private final Blaze3DRenderBackend blazeBackend;
+    private final GpuSampler sampler;
+    private boolean closed;
+    private long fadeOutStart = -1L;
 
     public ForgeLoadingOverlay(final Minecraft mc, final ReloadInstance reloader, final Consumer<Optional<Throwable>> errorConsumer, DisplayWindow displayWindow) {
         super(mc, reloader, errorConsumer, false);
         this.minecraft = mc;
         this.reload = reloader;
         this.displayWindow = displayWindow;
-        var texture = mc.getTextureManager().getTexture(MOJANG_STUDIOS_LOGO_LOCATION);
-        var gpuTexture = texture.getTexture();
-        if (gpuTexture instanceof GlTexture glTexture) {
-            displayWindow.addMojangTexture(glTexture.glId());
-        } else if (gpuTexture instanceof VulkanGpuTexture vkTexture) {
-            displayWindow.addMojangTexture(vkTexture.vkImage());
-        } else {
-            LOGGER.debug("Skipping early Mojang logo handoff texture for unsupported GPU texture type {}", gpuTexture.getClass().getName());
+
+        this.blazeBackend = new Blaze3DRenderBackend();
+        this.sampler = RenderSystem.getSamplerCache().getClampToEdge(com.mojang.blaze3d.textures.FilterMode.NEAREST);
+        displayWindow.setBackend(blazeBackend);
+
+        try {
+            blazeBackend.setMojangTextureSupplier(() ->
+                mc.getTextureManager().getTexture(MOJANG_STUDIOS_LOGO_LOCATION).getTextureView());
+            displayWindow.addMojangTexture(Blaze3DRenderBackend.MOJANG_TEXTURE_ID);
+        } catch (Throwable t) {
+            LOGGER.debug("Could not hand off Mojang logo texture to early display", t);
         }
+
         this.progress = StartupMessageManager.prependProgressBar("Minecraft Progress", 100);
-        if (ENABLE) {
-            this.earlyBuffer = ForgeRenderTypes.getLoadingOverlay(displayWindow);
-        } else {
-            this.earlyBuffer = null;
-        }
     }
 
     public static Supplier<LoadingOverlay> newInstance(Supplier<Minecraft> mc, Supplier<ReloadInstance> ri, Consumer<Optional<Throwable>> handler, DisplayWindow window) {
-        return ()->new ForgeLoadingOverlay(mc.get(), ri.get(), handler, window);
+        return () -> new ForgeLoadingOverlay(mc.get(), ri.get(), handler, window);
     }
 
     @Override
-    protected boolean extractContentRenderState(final GuiGraphicsExtractor graphics, float fade) {
-        if (!ENABLE)
-            return true;
-        /* This should render the framebuffer but it doesnt work in 1.21.6's rendering changes.
-         * The proper way to fix this is to just kill off the display window when Vanilla gets to this phase, and render our extra elements normally.
-         * TODO: [Forge][Rendering] Render only out elements from the loading screen
-         *
-        progress.setAbsolute(Mth.clamp((int)(this.reload.getActualProgress() * 100f), 0, 100));
+    public void extractRenderState(final GuiGraphicsExtractor graphics, final int mouseX, final int mouseY, final float a) {
+        if (!ENABLE) {
+            super.extractRenderState(graphics, mouseX, mouseY, a);
+            return;
+        }
 
-        int alpha = (int)(fade * 255);
-        this.displayWindow.render(alpha);
+        progress.setAbsolute(Mth.clamp((int) (this.reload.getActualProgress() * 100f), 0, 100));
 
-        int width = gui.guiWidth();
-        int height = gui.guiHeight();
+        long now = System.currentTimeMillis();
+        if (this.fadeOutStart == -1L && this.reload.isDone()) {
+            this.fadeOutStart = now;
+        }
+        float fadeOutAnim = this.fadeOutStart > -1L ? (float)(now - this.fadeOutStart) / 1000.0F : -1.0F;
+        float logoAlpha = fadeOutAnim >= 1.0F
+            ? 1.0F - Mth.clamp(fadeOutAnim - 1.0F, 0.0F, 1.0F)
+            : 1.0F;
 
-        var fbWidth = this.minecraft.getWindow().getWidth();
-        var fbHeight = this.minecraft.getWindow().getHeight();
-        GL30C.glViewport(0, 0, fbWidth, fbHeight);
+        int width = graphics.guiWidth();
+        int height = graphics.guiHeight();
 
-        var buf = gui.getBufferSource().getBuffer(earlyBuffer);
-        buf.addVertex(pos, 0,     0,      0f).setUv(0, 0).setColor(1f, 1f, 1f, fade);
-        buf.addVertex(pos, 0,     height, 0f).setUv(0, 1).setColor(1f, 1f, 1f, fade);
-        buf.addVertex(pos, width, height, 0f).setUv(1, 1).setColor(1f, 1f, 1f, fade);
-        buf.addVertex(pos, width, 0,      0f).setUv(1, 0).setColor(1f, 1f, 1f, fade);
-        */
+        GpuTextureView view = blazeBackend.renderElements(() -> displayWindow.render(255));
+        graphics.blit(view, sampler, 0, 0, width, height, 0f, 1f, 1f, 0f);
 
-        return false;
+        int fadeAlpha = (int) ((1.0F - logoAlpha) * 255);
+        if (fadeAlpha > 0) {
+            graphics.fill(0, 0, width, height, (fadeAlpha << 24));
+        }
+
+        if (fadeOutAnim >= 2.0F) {
+            this.minecraft.gui.setOverlay(null);
+            if (!closed) {
+                closed = true;
+                blazeBackend.close();
+            }
+        }
     }
 }

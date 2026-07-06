@@ -17,7 +17,9 @@ import java.util.Arrays;
  * Backend-specific subclasses implement {@link #draw()} to upload and render the buffered vertex data.
  * <p>
  * This is a Triangles only buffer, all data uploaded is in Triangles.
- * Quads are converted to triangles using {@code 0, 1, 2, 0, 2, 3}.
+ * Quads are converted to triangles using {@code 0, 1, 2, 2, 3, 0} (matching Blaze3D's
+ * sequential quad index buffer), with vertices emitted in counter-clockwise order
+ * (top-left, bottom-left, bottom-right, top-right).
  */
 public abstract class VertexDataBuilder implements Closeable {
     private static final MemoryUtil.MemoryAllocator ALLOCATOR = MemoryUtil.getAllocator(false);
@@ -59,8 +61,10 @@ public abstract class VertexDataBuilder implements Closeable {
         if (elementIndex == format.types.length) throw new IllegalStateException("Expected endVertex");
         if (format.types[elementIndex] != Element.POS) throw new IllegalArgumentException("Expected " + format.types[elementIndex]);
 
+        // Position is a 3-component vector to match Blaze3D's POSITION_TEX_COLOR layout; z is always 0 for 2D.
         buffer.putFloat(index + 0, x);
         buffer.putFloat(index + 4, y);
+        buffer.putFloat(index + 8, 0.0f);
 
         index += format.types[elementIndex].width;
         elementIndex++;
@@ -152,7 +156,7 @@ public abstract class VertexDataBuilder implements Closeable {
     }
 
     public enum Element {
-        POS(DataType.FLOAT, 2, 2 * 4),
+        POS(DataType.FLOAT, 3, 3 * 4),
         TEX(DataType.FLOAT, 2, 2 * 4),
         COLOR(DataType.UNORM_BYTE, 4, 4);
 

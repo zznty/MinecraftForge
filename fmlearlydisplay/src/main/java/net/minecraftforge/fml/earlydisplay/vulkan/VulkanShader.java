@@ -90,13 +90,13 @@ public class VulkanShader extends BaseShader {
             stages.put(0, vertStage);
             stages.put(1, fragStage);
 
-            // Vertex layout: pos(2f, 0), tex(2f, 8), colour(4ub_unorm, 16) → stride 20
+            // Vertex layout: pos(3f, 0), tex(2f, 12), colour(4ub_unorm, 20) → stride 24
             var bindingDesc = VkVertexInputBindingDescription.calloc(1, stack)
-                .binding(0).stride(20).inputRate(VK_VERTEX_INPUT_RATE_VERTEX);
+                .binding(0).stride(24).inputRate(VK_VERTEX_INPUT_RATE_VERTEX);
             var attrDescs = VkVertexInputAttributeDescription.calloc(3, stack);
-            attrDescs.get(0).location(0).binding(0).format(VK_FORMAT_R32G32_SFLOAT).offset(0);
-            attrDescs.get(1).location(1).binding(0).format(VK_FORMAT_R32G32_SFLOAT).offset(8);
-            attrDescs.get(2).location(2).binding(0).format(VK_FORMAT_R8G8B8A8_UNORM).offset(16);
+            attrDescs.get(0).location(0).binding(0).format(VK_FORMAT_R32G32B32_SFLOAT).offset(0);
+            attrDescs.get(1).location(1).binding(0).format(VK_FORMAT_R32G32_SFLOAT).offset(12);
+            attrDescs.get(2).location(2).binding(0).format(VK_FORMAT_R8G8B8A8_UNORM).offset(20);
             var vertexInput = VkPipelineVertexInputStateCreateInfo.calloc(stack)
                 .sType(VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO)
                 .pVertexBindingDescriptions(bindingDesc)

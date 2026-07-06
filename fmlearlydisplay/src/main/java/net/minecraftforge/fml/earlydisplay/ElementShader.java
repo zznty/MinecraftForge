@@ -38,7 +38,7 @@ public class ElementShader extends BaseShader {
         """);
         glShaderSource(vertexShader, """
                  #version 150 core
-                 in vec2 position;
+                 in vec3 position;
                  in vec2 tex;
                  in vec4 colour;
                  uniform vec2 screenSize;
@@ -47,7 +47,7 @@ public class ElementShader extends BaseShader {
                  void main() {
                      fTex = tex;
                      fColour = colour;
-                     gl_Position = vec4((position/screenSize) * 2 - 1, 0.0, 1.0);
+                     gl_Position = vec4((position.xy/screenSize) * 2 - 1, position.z, 1.0);
                  }
         """);
 

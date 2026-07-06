@@ -43,10 +43,11 @@ public class FontRasterizer {
             final var y0 = pos.y() + pos()[1];
             final var x1 = pos.x() + pos()[2];
             final var y1 = pos.y() + pos()[3];
+            // Counter-clockwise order (TL, BL, BR, TR) to match Blaze3D's quad index buffer (0, 1, 2, 2, 3, 0).
             bb.pos(x0, y0).tex(uv()[0], uv()[1]).colour(colour).endVertex();
-            bb.pos(x1, y0).tex(uv()[2], uv()[1]).colour(colour).endVertex();
             bb.pos(x0, y1).tex(uv()[0], uv()[3]).colour(colour).endVertex();
             bb.pos(x1, y1).tex(uv()[2], uv()[3]).colour(colour).endVertex();
+            bb.pos(x1, y0).tex(uv()[2], uv()[1]).colour(colour).endVertex();
             return new Pos(pos.x()+charwidth(), pos.y(), pos.minx());
         }
     }
